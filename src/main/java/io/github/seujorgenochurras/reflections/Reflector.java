@@ -6,7 +6,11 @@ import org.reflections.scanners.Scanners;
 import org.reflections.util.ConfigurationBuilder;
 
 import java.io.*;
+import java.lang.reflect.Method;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public class Reflector {
    private Reflector() {
@@ -19,20 +23,46 @@ public class Reflector {
 
       Set<Class<?>> classSet = reflections.getSubTypesOf(Object.class);
       for (Class<?> clazz : classSet) {
-         ClassFileReader classFileReader = new ClassFileReader(clazz);
-         System.out.println(classFileReader.readClass());
-         System.out.println(classFileReader.readMethods());
+         String methodDeclaration = MethodUtils.getMethodDeclaration(clazz.getMethods()[0]);
+         System.out.println(methodDeclaration);
       }
    }
-   private static class ClassFileReader{
-      private final Class<?> aClass;
-      public ClassFileReader(Class<?> aClass) {
-         this.aClass = aClass;
+
+   private static class MethodDeclarationStringCleaner {
+      private final Method dirtyMethodDeclaration;
+
+      private final Set<Supplier<String>> stringsToReplace = new HashSet<>();
+
+      private String dirtyMethodDeclarationToBeCleaned;
+
+      private MethodDeclarationStringCleaner(Method dirtyMethodDeclaration) {
+         this.dirtyMethodDeclaration = dirtyMethodDeclaration;
+         this.dirtyMethodDeclarationToBeCleaned = dirtyMethodDeclaration.toGenericString();
       }
+
+      public static MethodDeclarationStringCleaner ofMethod(Method dirtyMethod) {
+         return new MethodDeclarationStringCleaner(dirtyMethod);
+      }
+
+      public MethodDeclarationStringCleaner removePackageNameFromReturnType() {
+         Class<?> returnType = dirtyMethodDeclaration.getReturnType();
+         String returnTypePackageName = returnType.getPackageName();
+         String diamondInsideTypePackageName = dirtyMethodDeclaration.getGenericReturnType().getTypeName();
+         stringsToReplace.add(() -> returnTypePackageName);
+         return this;
+      }
+   }
+
+   private static class ClassFileReader {
+      private final Class<?> rootClass;
+
+      public ClassFileReader(Class<?> rootClass) {
+         this.rootClass = rootClass;
+      }
+
       public String readClass() throws FileNotFoundException {
          String classDirectoryStructure = getClassDirectoryStructure();
-         if(classDirectoryStructure.contains("$")) return "";
-
+         if (classDirectoryStructure.contains("$")) return "";
          FileReader fileReader = new FileReader(classDirectoryStructure);
          Scanner scanner = new Scanner(fileReader);
 
@@ -41,34 +71,50 @@ public class Reflector {
             classAsString = classAsString.concat(scanner.next() + " ");
          }
          scanner.close();
-        return classAsString;
+         return classAsString;
       }
+
       public Set<String> readMethods() throws FileNotFoundException {
          return new MethodReader(this).readMethods();
       }
 
-
-      private String getClassDirectoryStructure(){
-         String classPackageAndName = aClass.toString();
+      public String getClassDirectoryStructure() {
+         String classPackageAndName = rootClass.toString();
          return "src/main/java/".concat(classPackageAndName
-                 .replace("class ", "")
-                 .replace(".","/"))
+                         .replace("class ", "")
+                         .replace(".", "/"))
                  .concat(".java");
 
       }
 
-      private static class MethodReader{
+      private static class MethodReader {
          private final ClassFileReader classFileReader;
+         private final String classFullCode;
 
-         public MethodReader(ClassFileReader classFileReader) {
+         public MethodReader(ClassFileReader classFileReader) throws FileNotFoundException {
             this.classFileReader = classFileReader;
+            classFullCode = classFileReader.readClass();
          }
 
          public Set<String> readMethods() throws FileNotFoundException {
             String fullClassCode = classFileReader.readClass();
-
+            fullClassCode.indexOf("a");
             return Set.of("");
+         }
+
+         private int getIndexOfMethodInClasCode(String classCode, String methodInitiator) {
+            return classCode.indexOf(methodInitiator);
+         }
+
+         private Set<String> getAllMethodInitCodes() {
+            return Arrays.stream(classFileReader.rootClass.getMethods())
+                    .map(this::getMethodInitiatorCode).collect(Collectors.toSet());
+         }
+
+         private String getMethodInitiatorCode(Method method) {
+            return method.toGenericString();
          }
       }
    }
 }
+
