@@ -13,9 +13,10 @@ public class MethodUtils {
               .concat(method.getReturnType().getSimpleName() + " ")
               .concat(method.getName());
    }
-   private static String getMethodAccessModifiers(Method dirtyMethod) {
-      String dirtyMethodDeclaration = dirtyMethod.toGenericString();
-      return CleanMethodFactory.of(dirtyMethodDeclaration)
+   private static String getMethodAccessModifiers(Method method) {
+      String methodDeclaration = method.toGenericString();
+
+      return MethodDeclarationReassemble.of(methodDeclaration)
               .addScopeOfMethod()
               .addStaticIdentifiers()
               .build();
